@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>IT Operations – Software Asset Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/msal-browser/3.10.0/msal-browser.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:#f4f6fa;height:100vh;overflow:hidden}
+  input,select,textarea,button{font-family:inherit}
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:#f1f1f1}
+  ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+
+  /* Layout */
+  #app{display:flex;height:100vh;overflow:hidden}
+  #sidebar{width:240px;background:#0d1117;display:flex;flex-direction:column;transition:width .2s;flex-shrink:0;overflow:hidden}
+  #sidebar.collapsed{width:64px}
+  #main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  #topbar{background:#fff;border-bottom:1px solid #e5e7eb;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+  #content{flex:1;overflow:auto;padding:24px}
+
+  /* Sidebar */
+  .sb-header{padding:16px;border-bottom:1px solid #21262d;display:flex;align-items:center;gap:10;min-height:64px}
+  .sb-logo{width:36px;height:36px;background:#1565c0;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .sb-title{color:#e6edf3;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden}
+  .sb-sub{color:#8b949e;font-size:11px}
+  .nav-item{width:100%;display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;border:none;background:transparent;color:#8b949e;cursor:pointer;margin-bottom:4px;text-align:left;white-space:nowrap;overflow:hidden}
+  .nav-item.active{background:#1565c0;color:#fff}
+  .nav-item:hover:not(.active){background:#161b22;color:#e6edf3}
+  .nav-label{font-size:13px;font-weight:500}
+  .sb-footer{padding:12px 8px;border-top:1px solid #21262d}
+  .sb-user{display:flex;align-items:center;gap:10px;padding:8px 10px}
+  .btn-logout{width:100%;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;border:none;background:transparent;color:#f85149;cursor:pointer;font-size:13px}
+  .btn-logout:hover{background:#1c1318}
+
+  /* Cards */
+  .card{background:#fff;border-radius:12px;border:1px solid #e5e7eb;padding:20px 24px}
+  .stat-card{background:#fff;border-radius:12px;border:1px solid #e5e7eb;padding:16px 20px;display:flex;align-items:center;gap:14px}
+  .stat-icon{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .stat-label{font-size:13px;color:#6b7280}
+  .stat-value{font-size:26px;font-weight:700;color:#111827}
+
+  /* Buttons */
+  .btn-primary{background:#1565c0;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .btn-primary:hover{background:#1251a3}
+  .btn-secondary{background:#f3f4f6;color:#374151;border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer}
+  .btn-secondary:hover{background:#e5e7eb}
+  .btn-danger{background:#ffebee;color:#c62828;border:none;border-radius:6px;padding:5px 8px;font-size:12px;cursor:pointer}
+  .btn-assign{background:#eff6ff;color:#1565c0;border:none;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer}
+
+  /* Table */
+  .data-table{width:100%;border-collapse:collapse;font-size:13px}
+  .data-table th{text-align:left;padding:10px 14px;color:#6b7280;font-weight:500;font-size:12px;background:#f9fafb;border-bottom:1px solid #e5e7eb}
+  .data-table td{padding:11px 14px;border-bottom:1px solid #f3f4f6;color:#374151}
+  .data-table tr:hover td{background:#f9fafb}
+  .data-table tr.selected td{background:#eff6ff}
+
+  /* Badge */
+  .badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;display:inline-block}
+  .badge-active{background:#e8f5e9;color:#2e7d32}
+  .badge-expired{background:#ffebee;color:#c62828}
+  .badge-expiring{background:#fff8e1;color:#e65100}
+  .badge-admin{background:#e8eaf6;color:#283593}
+  .badge-member{background:#f3f4f6;color:#374151}
+
+  /* Forms */
+  .form-group{margin-bottom:14px}
+  .form-label{display:block;font-size:13px;color:#374151;font-weight:500;margin-bottom:5px}
+  .form-input{width:100%;border:1px solid #d1d5db;border-radius:8px;padding:9px 12px;font-size:13px;color:#111827;outline:none}
+  .form-input:focus{border-color:#1565c0;box-shadow:0 0 0 3px rgba(21,101,192,0.1)}
+  select.form-input{background:#fff}
+
+  /* Modal */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:200}
+  .modal{background:#fff;border-radius:16px;padding:28px 32px;width:480px;max-height:85vh;overflow:auto}
+  .modal-sm{width:420px}
+  .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+  .modal-title{font-size:16px;font-weight:700;color:#111827}
+  .modal-close{background:none;border:none;color:#9ca3af;cursor:pointer;font-size:22px;line-height:1}
+
+  /* Avatar */
+  .avatar{border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:500;flex-shrink:0}
+
+  /* Progress */
+  .progress-bar{background:#f3f4f6;border-radius:8px}
+  .progress-fill{height:100%;border-radius:8px;background:#1565c0;transition:width .3s}
+
+  /* Toast */
+  #toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;color:#fff;font-size:13px;font-weight:500;z-index:999;display:none;max-width:360px;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+
+  /* Setup screen */
+  #setup-screen{position:fixed;inset:0;background:#0d1117;display:flex;align-items:center;justify-content:center;z-index:500;flex-direction:column;gap:24px}
+  .setup-card{background:#161b22;border:1px solid #30363d;border-radius:16px;padding:36px 40px;width:520px}
+  .setup-card h2{color:#e6edf3;font-size:18px;font-weight:600;margin-bottom:8px}
+  .setup-card p{color:#8b949e;font-size:13px;margin-bottom:24px;line-height:1.6}
+  .setup-input{width:100%;background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:10px 14px;color:#e6edf3;font-size:14px;margin-bottom:12px;outline:none}
+  .setup-input:focus{border-color:#1565c0}
+  .setup-btn{width:100%;background:#1565c0;color:#fff;border:none;border-radius:8px;padding:11px;font-size:14px;font-weight:500;cursor:pointer;margin-top:8px}
+  .setup-btn:hover{background:#1251a3}
+  .step-indicator{display:flex;gap:8px;margin-bottom:20px}
+  .step-dot{width:8px;height:8px;border-radius:50%;background:#30363d}
+  .step-dot.active{background:#1565c0}
+  .step-dot.done{background:#2e7d32}
+  .info-box{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:14px;margin-top:16px}
+  .info-box p{color:#8b949e;font-size:12px;margin-bottom:4px}
+  .info-box code{color:#58a6ff;font-family:monospace;font-size:12px}
+  #loading-overlay{position:fixed;inset:0;background:rgba(13,17,23,.85);display:flex;align-items:center;justify-content:center;z-index:400;flex-direction:column;gap:12px}
+  .spinner{width:40px;height:40px;border:3px solid #30363d;border-top:3px solid #1565c0;border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #loading-overlay p{color:#e6edf3;font-size:14px}
+
+  /* Grid helpers */
+  .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .flex-between{display:flex;justify-content:space-between;align-items:center}
+  .flex-center{display:flex;align-items:center;gap:10px}
+  .mt-16{margin-top:16px}
+  .mb-16{margin-bottom:16px}
+  .mb-24{margin-bottom:24px}
+
+  /* Detail panel */
+  #detail-panel{width:300px;flex-shrink:0;align-self:flex-start}
+  .detail-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:13px}
+  .detail-key{color:#6b7280}
+  .detail-val{color:#111827;font-weight:500}
+
+  /* Login */
+  #login-screen{position:fixed;inset:0;background:#0d1117;display:flex;align-items:center;justify-content:center;z-index:300}
+  .login-card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:32px 36px;width:420px}
+
+  /* Member card */
+  .member-card{background:#fff;border-radius:12px;border:1px solid #e5e7eb;padding:20px}
+  .license-mini{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f9fafb;font-size:12px}
+
+  /* Assign item */
+  .assign-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;border:1px solid #f3f4f6;background:#f9fafb;transition:all .15s}
+  .assign-item.assigned{background:#eff6ff;border-color:#bfdbfe}
+  .assign-item:hover{border-color:#93c5fd}
+  .checkbox{width:20px;height:20px;border-radius:4px;border:2px solid #d1d5db;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+  .checkbox.checked{background:#1565c0;border-color:#1565c0}
+</style>
+</head>
+<body>
+
+<!-- SETUP SCREEN -->
+<div id="setup-screen">
+  <div style="text-align:center;margin-bottom:8px">
+    <div style="width:56px;height:56px;background:#1565c0;border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
+      <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 00-8 0v2"/><circle cx="12" cy="14" r="1.5"/></svg>
+    </div>
+    <h1 style="color:#e6edf3;font-size:22px;font-weight:700">IT OPS – Software Asset Tracker</h1>
+    <p style="color:#8b949e;font-size:14px;margin-top:4px">One-time SharePoint configuration</p>
+  </div>
+
+  <div class="setup-card">
+    <div class="step-indicator">
+      <div class="step-dot active" id="dot1"></div>
+      <div class="step-dot" id="dot2"></div>
+      <div class="step-dot" id="dot3"></div>
+    </div>
+
+    <!-- Step 1: Azure AD App -->
+    <div id="step1">
+      <h2>Step 1 — Azure AD App Registration</h2>
+      <p>Register an app in Azure Active Directory to allow this portal to connect to your SharePoint via Microsoft Graph API.</p>
+      <input class="setup-input" id="cfg-clientId" placeholder="Azure AD Application (Client) ID" />
+      <input class="setup-input" id="cfg-tenantId" placeholder="Azure AD Directory (Tenant) ID" />
+      <div class="info-box">
+        <p>📋 How to get these values:</p>
+        <p>1. Go to <code>portal.azure.com</code> → Azure Active Directory</p>
+        <p>2. App registrations → New registration</p>
+        <p>3. Add redirect URI: <code id="redirect-uri-show"></code></p>
+        <p>4. Grant permissions: <code>Sites.ReadWrite.All</code>, <code>User.Read</code></p>
+        <p>5. Copy the Client ID and Tenant ID here</p>
+      </div>
+      <button class="setup-btn" onclick="goStep2()">Next →</button>
+    </div>
+
+    <!-- Step 2: SharePoint Site -->
+    <div id="step2" style="display:none">
+      <h2>Step 2 — SharePoint Site</h2>
+      <p>Enter your SharePoint site URL and the list names where license data will be stored. Lists will be created automatically if they don't exist.</p>
+      <input class="setup-input" id="cfg-siteUrl" placeholder="SharePoint Site URL (e.g. https://company.sharepoint.com/sites/ITOps)" />
+      <input class="setup-input" id="cfg-licenseList" placeholder="License List Name (default: SoftwareLicenses)" value="SoftwareLicenses" />
+      <input class="setup-input" id="cfg-assignList" placeholder="Assignments List Name (default: LicenseAssignments)" value="LicenseAssignments" />
+      <div class="info-box">
+        <p>💡 The portal will automatically create SharePoint lists with the correct columns on first run. You can use an existing list if column names match the SOP schema.</p>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button class="setup-btn" style="background:#21262d" onclick="goStep1()">← Back</button>
+        <button class="setup-btn" onclick="goStep3()">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Confirm -->
+    <div id="step3" style="display:none">
+      <h2>Step 3 — Review & Connect</h2>
+      <p>Your configuration will be saved in browser localStorage. Click Connect to authenticate with Microsoft and initialize SharePoint lists.</p>
+      <div id="cfg-summary" class="info-box" style="margin-bottom:16px"></div>
+      <button class="setup-btn" onclick="saveConfigAndConnect()">🔗 Connect to SharePoint</button>
+      <p style="color:#8b949e;font-size:11px;margin-top:12px;text-align:center">Configuration is stored locally in your browser only.</p>
+    </div>
+  </div>
+
+  <button onclick="useDemoMode()" style="background:none;border:1px solid #30363d;color:#8b949e;padding:10px 24px;border-radius:8px;cursor:pointer;font-size:13px">
+    🧪 Use Demo Mode (no SharePoint needed)
+  </button>
+</div>
+
+<!-- LOADING OVERLAY -->
+<div id="loading-overlay" style="display:none">
+  <div class="spinner"></div>
+  <p id="loading-msg">Connecting to SharePoint…</p>
+</div>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen" style="display:none">
+  <div class="login-card">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="width:48px;height:48px;background:#1565c0;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
+        <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 00-8 0v2"/></svg>
+      </div>
+      <h1 style="color:#e6edf3;font-size:20px;font-weight:600">IT Operations SAT</h1>
+      <p style="color:#8b949e;font-size:13px;margin-top:4px">Software Asset Tracker</p>
+    </div>
+    <div id="login-ms-section">
+      <button onclick="loginWithMicrosoft()" style="width:100%;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:8px;padding:11px;font-size:14px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:12px">
+        <svg width="18" height="18" viewBox="0 0 21 21"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
+        Sign in with Microsoft 365
+      </button>
+      <div style="text-align:center;color:#8b949e;font-size:12px;margin-bottom:12px">or</div>
+    </div>
+    <div>
+      <div style="margin-bottom:14px">
+        <label style="display:block;color:#8b949e;font-size:12px;margin-bottom:5px">Username</label>
+        <input id="login-user" class="setup-input" placeholder="admin or member username" style="margin-bottom:0"/>
+      </div>
+      <div style="margin-bottom:18px">
+        <label style="display:block;color:#8b949e;font-size:12px;margin-bottom:5px">Password</label>
+        <input id="login-pass" type="password" class="setup-input" placeholder="Password" style="margin-bottom:0" onkeydown="if(event.key==='Enter')localLogin()"/>
+      </div>
+      <div id="login-error" style="display:none;color:#f85149;font-size:13px;background:#1c1318;border:1px solid #6e2a2a;border-radius:6px;padding:8px 12px;margin-bottom:12px"></div>
+      <button onclick="localLogin()" class="setup-btn">Sign In</button>
+    </div>
+    <div id="demo-creds" style="display:none;margin-top:16px;background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:12px">
+      <p style="color:#8b949e;font-size:11px;font-weight:500;margin-bottom:6px">Demo credentials:</p>
+      <p style="color:#58a6ff;font-size:12px;margin:2px 0">Admin: admin / admin123</p>
+      <p style="color:#58a6ff;font-size:12px;margin:2px 0">Members: jsmith, amira, rking / pass123</p>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" style="display:none">
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div class="sb-header">
+      <div class="sb-logo">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 00-8 0v2"/></svg>
+      </div>
+      <div style="overflow:hidden;padding-left:2px" class="sb-text">
+        <div class="sb-title">IT OPS SAT</div>
+        <div class="sb-sub">Asset Tracker</div>
+      </div>
+    </div>
+    <nav style="flex:1;padding:16px 8px" id="nav-items"></nav>
+    <div class="sb-footer">
+      <div class="sb-user">
+        <div id="sb-avatar" class="avatar" style="width:32px;height:32px;font-size:12px"></div>
+        <div style="flex:1;min-width:0;overflow:hidden" class="sb-text">
+          <div id="sb-name" style="color:#e6edf3;font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+          <div id="sb-role" style="color:#8b949e;font-size:11px"></div>
+        </div>
+      </div>
+      <button class="btn-logout" onclick="logout()">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        <span class="sb-text" style="font-size:13px">Sign out</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div id="main">
+    <div id="topbar">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button onclick="toggleSidebar()" style="background:none;border:none;cursor:pointer;color:#6b7280;padding:4px">
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <h1 id="page-title" style="font-size:16px;font-weight:600;color:#111827"></h1>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span id="tb-dept" style="font-size:12px;color:#6b7280;background:#f3f4f6;padding:4px 10px;border-radius:20px"></span>
+        <div id="tb-avatar" class="avatar" style="width:34px;height:34px;font-size:13px"></div>
+        <div id="sp-status" style="font-size:11px;padding:3px 10px;border-radius:20px;font-weight:600"></div>
+      </div>
+    </div>
+    <div id="content"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- ADD LICENSE MODAL -->
+<div id="add-modal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Add New License</span>
+      <button class="modal-close" onclick="closeModal('add-modal')">×</button>
+    </div>
+    <div class="grid-2" style="gap:12px">
+      <div class="form-group" style="grid-column:1/-1"><label class="form-label">Software Name *</label><input class="form-input" id="f-software" placeholder="e.g. Microsoft 365"/></div>
+      <div class="form-group"><label class="form-label">Vendor *</label><input class="form-input" id="f-vendor" placeholder="e.g. Microsoft"/></div>
+      <div class="form-group"><label class="form-label">Category</label>
+        <select class="form-input" id="f-category">
+          <option>Productivity</option><option>Design</option><option>Development</option>
+          <option>Communication</option><option>Project Mgmt</option><option>Security</option><option>Other</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Total Seats *</label><input type="number" class="form-input" id="f-qty" min="1" value="1"/></div>
+      <div class="form-group"><label class="form-label">Cost per Seat ($/mo)</label><input type="number" class="form-input" id="f-cost" step="0.01" placeholder="0.00"/></div>
+      <div class="form-group"><label class="form-label">Start Date *</label><input type="date" class="form-input" id="f-start"/></div>
+      <div class="form-group"><label class="form-label">End Date *</label><input type="date" class="form-input" id="f-end"/></div>
+      <div class="form-group" style="grid-column:1/-1"><label class="form-label">License Key / Notes</label><textarea class="form-input" id="f-notes" rows="2" placeholder="Optional"></textarea></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn-secondary" onclick="closeModal('add-modal')" style="flex:1">Cancel</button>
+      <button class="btn-primary" onclick="submitAddLicense()" style="flex:2;justify-content:center">Add License</button>
+    </div>
+  </div>
+</div>
+
+<!-- ASSIGN MODAL -->
+<div id="assign-modal" class="modal-overlay" style="display:none">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div><span class="modal-title" id="assign-title">Assign Members</span><br><span id="assign-sub" style="font-size:12px;color:#6b7280"></span></div>
+      <button class="modal-close" onclick="closeModal('assign-modal')">×</button>
+    </div>
+    <div id="assign-list"></div>
+    <button class="btn-primary" onclick="saveAssignments()" style="width:100%;justify-content:center;margin-top:16px">Save Assignments</button>
+  </div>
+</div>
+
+<!-- REQUEST MODAL -->
+<div id="request-modal" class="modal-overlay" style="display:none">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">Request a License</span>
+      <button class="modal-close" onclick="closeModal('request-modal')">×</button>
+    </div>
+    <div class="form-group"><label class="form-label">Software Name *</label><input class="form-input" id="req-software" placeholder="e.g. Adobe Acrobat"/></div>
+    <div class="form-group"><label class="form-label">Business Justification *</label><textarea class="form-input" id="req-reason" rows="3" placeholder="Why do you need this software?"></textarea></div>
+    <div class="form-group"><label class="form-label">Required By</label><input type="date" class="form-input" id="req-date"/></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn-secondary" onclick="closeModal('request-modal')" style="flex:1">Cancel</button>
+      <button class="btn-primary" onclick="submitRequest()" style="flex:2;justify-content:center">Submit Request</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== CONFIG & STATE ==========
+let CFG = null;
+let msalInstance = null;
+let accessToken = null;
+let currentUser = null;
+let isDemoMode = false;
+let sidebarOpen = true;
+let currentPage = 'dashboard';
+let licenses = [];
+let members = [];
+let assignments = [];
+let selectedLicense = null;
+let assignModalLicId = null;
+let assignModalTemp = [];
+
+const DEMO_USERS = [
+  {id:'u1',username:'admin',password:'admin123',role:'admin',name:'Sarah Al-Mansoori',email:'sarah.admin@itops.com',dept:'IT Operations'},
+  {id:'u2',username:'jsmith',password:'pass123',role:'member',name:'James Smith',email:'j.smith@itops.com',dept:'Engineering'},
+  {id:'u3',username:'amira',password:'pass123',role:'member',name:'Amira Hassan',email:'a.hassan@itops.com',dept:'Design'},
+  {id:'u4',username:'rking',password:'pass123',role:'member',name:'Robert King',email:'r.king@itops.com',dept:'Finance'},
+  {id:'u5',username:'lchen',password:'pass123',role:'member',name:'Lisa Chen',email:'l.chen@itops.com',dept:'Engineering'},
+  {id:'u6',username:'momar',password:'pass123',role:'member',name:'Mohammed Omar',email:'m.omar@itops.com',dept:'Operations'},
+];
+const DEMO_LICENSES = [
+  {id:'l1',software:'Microsoft 365',vendor:'Microsoft',category:'Productivity',totalQty:50,startDate:'2024-01-01',endDate:'2025-12-31',cost:12.50,notes:'Enterprise E3',status:'active'},
+  {id:'l2',software:'Adobe Creative Cloud',vendor:'Adobe',category:'Design',totalQty:10,startDate:'2024-03-01',endDate:'2025-02-28',cost:54.99,notes:'All Apps plan',status:'active'},
+  {id:'l3',software:'GitHub Enterprise',vendor:'GitHub',category:'Development',totalQty:25,startDate:'2024-06-01',endDate:'2025-05-31',cost:21.00,notes:'',status:'active'},
+  {id:'l4',software:'Slack Business+',vendor:'Salesforce',category:'Communication',totalQty:100,startDate:'2023-09-01',endDate:'2024-08-31',cost:7.25,notes:'',status:'expired'},
+  {id:'l5',software:'Jira Software',vendor:'Atlassian',category:'Project Mgmt',totalQty:30,startDate:'2024-08-01',endDate:'2025-07-31',cost:8.15,notes:'',status:'active'},
+  {id:'l6',software:'Zoom Business',vendor:'Zoom',category:'Communication',totalQty:20,startDate:'2024-11-01',endDate:'2025-01-15',cost:15.99,notes:'',status:'expiring_soon'},
+];
+const DEMO_ASSIGNMENTS = [
+  {id:'a1',licenseId:'l1',userId:'u2'},{id:'a2',licenseId:'l1',userId:'u3'},
+  {id:'a3',licenseId:'l1',userId:'u4'},{id:'a4',licenseId:'l2',userId:'u3'},
+  {id:'a5',licenseId:'l3',userId:'u2'},{id:'a6',licenseId:'l3',userId:'u5'},
+  {id:'a7',licenseId:'l4',userId:'u2'},{id:'a8',licenseId:'l5',userId:'u2'},
+  {id:'a9',licenseId:'l5',userId:'u5'},{id:'a10',licenseId:'l6',userId:'u3'},
+];
+
+// ========== INIT ==========
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('redirect-uri-show').textContent = window.location.href.split('?')[0];
+  const saved = localStorage.getItem('sat_config');
+  if (saved) {
+    CFG = JSON.parse(saved);
+    initMsal();
+  } else {
+    document.getElementById('setup-screen').style.display = 'flex';
+  }
+});
+
+// ========== SETUP ==========
+function goStep2() {
+  const cid = document.getElementById('cfg-clientId').value.trim();
+  const tid = document.getElementById('cfg-tenantId').value.trim();
+  if (!cid || !tid) { alert('Please enter both Client ID and Tenant ID.'); return; }
+  document.getElementById('step1').style.display = 'none';
+  document.getElementById('step2').style.display = 'block';
+  document.getElementById('dot1').classList.add('done'); document.getElementById('dot1').classList.remove('active');
+  document.getElementById('dot2').classList.add('active');
+}
+function goStep1() {
+  document.getElementById('step2').style.display = 'none';
+  document.getElementById('step1').style.display = 'block';
+  document.getElementById('dot2').classList.remove('active');
+  document.getElementById('dot1').classList.remove('done'); document.getElementById('dot1').classList.add('active');
+}
+function goStep3() {
+  const siteUrl = document.getElementById('cfg-siteUrl').value.trim();
+  if (!siteUrl) { alert('Please enter your SharePoint site URL.'); return; }
+  document.getElementById('step2').style.display = 'none';
+  document.getElementById('step3').style.display = 'block';
+  document.getElementById('dot2').classList.add('done'); document.getElementById('dot2').classList.remove('active');
+  document.getElementById('dot3').classList.add('active');
+  const cid = document.getElementById('cfg-clientId').value.trim();
+  const tid = document.getElementById('cfg-tenantId').value.trim();
+  const ll = document.getElementById('cfg-licenseList').value.trim() || 'SoftwareLicenses';
+  const al = document.getElementById('cfg-assignList').value.trim() || 'LicenseAssignments';
+  document.getElementById('cfg-summary').innerHTML = `
+    <p style="color:#8b949e;font-size:12px;margin-bottom:4px">Tenant ID: <code style="color:#58a6ff">${tid}</code></p>
+    <p style="color:#8b949e;font-size:12px;margin-bottom:4px">Client ID: <code style="color:#58a6ff">${cid.slice(0,8)}…</code></p>
+    <p style="color:#8b949e;font-size:12px;margin-bottom:4px">Site URL: <code style="color:#58a6ff">${siteUrl}</code></p>
+    <p style="color:#8b949e;font-size:12px;margin-bottom:4px">License List: <code style="color:#58a6ff">${ll}</code></p>
+    <p style="color:#8b949e;font-size:12px">Assignment List: <code style="color:#58a6ff">${al}</code></p>`;
+}
+function saveConfigAndConnect() {
+  CFG = {
+    clientId: document.getElementById('cfg-clientId').value.trim(),
+    tenantId: document.getElementById('cfg-tenantId').value.trim(),
+    siteUrl: document.getElementById('cfg-siteUrl').value.trim(),
+    licenseList: document.getElementById('cfg-licenseList').value.trim() || 'SoftwareLicenses',
+    assignList: document.getElementById('cfg-assignList').value.trim() || 'LicenseAssignments',
+  };
+  localStorage.setItem('sat_config', JSON.stringify(CFG));
+  document.getElementById('setup-screen').style.display = 'none';
+  initMsal();
+}
+function useDemoMode() {
+  isDemoMode = true;
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('demo-creds').style.display = 'block';
+  document.getElementById('login-ms-section').style.display = 'none';
+  showLoginScreen();
+}
+
+// ========== MSAL ==========
+function initMsal() {
+  if (!CFG) return;
+  try {
+    const msalConfig = {
+      auth: { clientId: CFG.clientId, authority: `https://login.microsoftonline.com/${CFG.tenantId}`, redirectUri: window.location.href.split('?')[0] },
+      cache: { cacheLocation: 'localStorage' }
+    };
+    msalInstance = new msal.PublicClientApplication(msalConfig);
+    msalInstance.initialize().then(() => {
+      msalInstance.handleRedirectPromise().then(resp => {
+        if (resp && resp.account) {
+          accessToken = resp.accessToken;
+          loginMSUser(resp.account);
+        } else {
+          showLoginScreen();
+        }
+      }).catch(() => showLoginScreen());
+    });
+  } catch(e) {
+    console.warn('MSAL init failed:', e);
+    showLoginScreen();
+  }
+}
+async function loginWithMicrosoft() {
+  if (!msalInstance) return;
+  try {
+    await msalInstance.loginRedirect({ scopes: ['Sites.ReadWrite.All', 'User.Read', 'User.ReadBasic.All'] });
+  } catch(e) { showToast('Microsoft login failed: ' + e.message, 'error'); }
+}
+async function getToken() {
+  if (isDemoMode) return null;
+  const accounts = msalInstance?.getAllAccounts();
+  if (!accounts || accounts.length === 0) return null;
+  try {
+    const result = await msalInstance.acquireTokenSilent({ scopes: ['Sites.ReadWrite.All'], account: accounts[0] });
+    return result.accessToken;
+  } catch(e) {
+    try {
+      const result = await msalInstance.acquireTokenPopup({ scopes: ['Sites.ReadWrite.All'] });
+      return result.accessToken;
+    } catch(e2) { return null; }
+  }
+}
+function loginMSUser(account) {
+  currentUser = { id: account.homeAccountId, name: account.name || account.username, email: account.username, role: 'member', dept: 'IT', msAccount: account };
+  document.getElementById('login-screen').style.display = 'none';
+  initApp();
+}
+
+// ========== LOGIN ==========
+function showLoginScreen() {
+  document.getElementById('loading-overlay').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+}
+function localLogin() {
+  const u = document.getElementById('login-user').value.trim();
+  const p = document.getElementById('login-pass').value;
+  if (isDemoMode) {
+    const found = DEMO_USERS.find(x => x.username === u && x.password === p);
+    if (!found) { showLoginError('Invalid credentials.'); return; }
+    currentUser = found;
+  } else {
+    const admins = [{username:'admin',password:'admin123',role:'admin',name:'IT Admin',email:'admin@itops.com',dept:'IT Operations',id:'local-admin'}];
+    const found = admins.find(x => x.username === u && x.password === p);
+    if (!found) { showLoginError('Invalid credentials. Use Microsoft sign-in or admin credentials.'); return; }
+    currentUser = found;
+  }
+  document.getElementById('login-screen').style.display = 'none';
+  initApp();
+}
+function showLoginError(msg) {
+  const el = document.getElementById('login-error');
+  el.textContent = msg; el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 4000);
+}
+function logout() {
+  currentUser = null; accessToken = null; licenses = []; members = []; assignments = [];
+  document.getElementById('app').style.display = 'none';
+  if (!isDemoMode && msalInstance) { try { msalInstance.logoutRedirect(); } catch(e) {} }
+  showLoginScreen();
+}
+
+// ========== APP INIT ==========
+async function initApp() {
+  showLoading('Loading data…');
+  document.getElementById('app').style.display = 'flex';
+  if (isDemoMode) {
+    licenses = JSON.parse(JSON.stringify(DEMO_LICENSES));
+    members = DEMO_USERS.filter(u => u.role === 'member');
+    assignments = JSON.parse(JSON.stringify(DEMO_ASSIGNMENTS));
+    setSpStatus('Demo Mode', '#e65100', '#fff8e1');
+  } else {
+    const token = await getToken();
+    if (token) {
+      accessToken = token;
+      setSpStatus('SharePoint ✓', '#2e7d32', '#e8f5e9');
+      await loadFromSharePoint();
+    } else {
+      setSpStatus('Offline', '#c62828', '#ffebee');
+      licenses = []; members = []; assignments = [];
+    }
+  }
+  hideLoading();
+  setupSidebar();
+  renderPage(currentUser.role === 'admin' ? 'dashboard' : 'my-licenses');
+}
+
+function setSpStatus(text, color, bg) {
+  const el = document.getElementById('sp-status');
+  el.textContent = text; el.style.color = color; el.style.background = bg;
+}
+
+// ========== SHAREPOINT API ==========
+async function spRequest(method, path, body) {
+  const token = await getToken();
+  if (!token) return null;
+  const siteId = await getSiteId(token);
+  if (!siteId) return null;
+  const url = `https://graph.microsoft.com/v1.0/sites/${siteId}${path}`;
+  const opts = { method, headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  if (!res.ok) { console.error('SP Error:', res.status, await res.text()); return null; }
+  return res.json();
+}
+
+let _siteId = null;
+async function getSiteId(token) {
+  if (_siteId) return _siteId;
+  const urlObj = new URL(CFG.siteUrl);
+  const host = urlObj.hostname;
+  const sitePath = urlObj.pathname.replace(/^\/sites\//, '');
+  const res = await fetch(`https://graph.microsoft.com/v1.0/sites/${host}:/sites/${sitePath}`, {
+    headers: { 'Authorization': 'Bearer ' + token }
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  _siteId = data.id;
+  return _siteId;
+}
+
+async function getOrCreateList(token, listName, columns) {
+  const siteId = await getSiteId(token);
+  if (!siteId) return null;
+  const checkUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists?$filter=displayName eq '${listName}'`;
+  const checkRes = await fetch(checkUrl, { headers: { 'Authorization': 'Bearer ' + token } });
+  const checkData = await checkRes.json();
+  if (checkData.value && checkData.value.length > 0) return checkData.value[0].id;
+  const createRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists`, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ displayName: listName, columns, list: { template: 'genericList' } })
+  });
+  if (!createRes.ok) return null;
+  const created = await createRes.json();
+  return created.id;
+}
+
+const LICENSE_COLUMNS = [
+  {name:'Software',text:{}},{name:'Vendor',text:{}},{name:'Category',text:{}},
+  {name:'TotalQty',number:{}},{name:'StartDate',dateTime:{}},{name:'EndDate',dateTime:{}},
+  {name:'Cost',number:{}},{name:'Status',text:{}},{name:'Notes',text:{}}
+];
+const ASSIGN_COLUMNS = [
+  {name:'LicenseId',text:{}},{name:'LicenseName',text:{}},{name:'UserId',text:{}},
+  {name:'UserName',text:{}},{name:'UserEmail',text:{}},{name:'UserDept',text:{}}
+];
+
+async function loadFromSharePoint() {
+  try {
+    const token = await getToken();
+    showLoading('Initializing SharePoint lists…');
+    const licListId = await getOrCreateList(token, CFG.licenseList, LICENSE_COLUMNS);
+    const assignListId = await getOrCreateList(token, CFG.assignList, ASSIGN_COLUMNS);
+    if (!licListId || !assignListId) { showToast('Could not access SharePoint lists.', 'error'); return; }
+    showLoading('Loading licenses…');
+    const licRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${_siteId}/lists/${licListId}/items?$expand=fields&$top=200`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const licData = await licRes.json();
+    licenses = (licData.value || []).map(i => ({
+      id: i.id, software: i.fields.Software || '', vendor: i.fields.Vendor || '',
+      category: i.fields.Category || '', totalQty: parseInt(i.fields.TotalQty) || 0,
+      startDate: i.fields.StartDate ? i.fields.StartDate.slice(0,10) : '',
+      endDate: i.fields.EndDate ? i.fields.EndDate.slice(0,10) : '',
+      cost: parseFloat(i.fields.Cost) || 0, status: i.fields.Status || 'active', notes: i.fields.Notes || '',
+      _listId: licListId
+    }));
+    showLoading('Loading assignments…');
+    const asnRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${_siteId}/lists/${assignListId}/items?$expand=fields&$top=500`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const asnData = await asnRes.json();
+    assignments = (asnData.value || []).map(i => ({
+      id: i.id, licenseId: i.fields.LicenseId, userId: i.fields.UserId,
+      userName: i.fields.UserName, userEmail: i.fields.UserEmail, userDept: i.fields.UserDept,
+      _listId: assignListId
+    }));
+    // Load org members via Graph
+    showLoading('Loading team members…');
+    const usersRes = await fetch('https://graph.microsoft.com/v1.0/users?$top=50&$select=id,displayName,mail,department', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const usersData = await usersRes.json();
+    members = (usersData.value || []).map(u => ({ id: u.id, name: u.displayName, email: u.mail, dept: u.department || 'N/A', role: 'member' }));
+    // Update licenses status
+    licenses = licenses.map(l => ({ ...l, status: computeStatus(l.endDate) }));
+    // Store list IDs in window for later ops
+    window._licListId = licListId;
+    window._assignListId = assignListId;
+  } catch(e) { console.error(e); showToast('SharePoint load error: ' + e.message, 'error'); }
+}
+
+async function spAddLicense(data) {
+  const token = await getToken();
+  const siteId = await getSiteId(token);
+  const res = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${window._licListId}/items`, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: { Software: data.software, Vendor: data.vendor, Category: data.category, TotalQty: data.totalQty, StartDate: data.startDate, EndDate: data.endDate, Cost: data.cost, Status: data.status, Notes: data.notes } })
+  });
+  const created = await res.json();
+  return created.id;
+}
+
+async function spDeleteLicense(id) {
+  const token = await getToken();
+  const siteId = await getSiteId(token);
+  await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${window._licListId}/items/${id}`, {
+    method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token }
+  });
+}
+
+async function spSaveAssignments(licId, newUserIds, allMembers) {
+  const token = await getToken();
+  const siteId = await getSiteId(token);
+  const existing = assignments.filter(a => a.licenseId === licId);
+  const existingUserIds = existing.map(a => a.userId);
+  const toAdd = newUserIds.filter(uid => !existingUserIds.includes(uid));
+  const toRemove = existing.filter(a => !newUserIds.includes(a.userId));
+  for (const asgn of toRemove) {
+    await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${window._assignListId}/items/${asgn.id}`, {
+      method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token }
+    });
+  }
+  for (const uid of toAdd) {
+    const member = allMembers.find(m => m.id === uid) || {};
+    const lic = licenses.find(l => l.id === licId) || {};
+    await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${window._assignListId}/items`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: { LicenseId: licId, LicenseName: lic.software || '', UserId: uid, UserName: member.name || '', UserEmail: member.email || '', UserDept: member.dept || '' } })
+    });
+  }
+}
+
+// ========== HELPERS ==========
+function computeStatus(endDate) {
+  if (!endDate) return 'active';
+  const days = Math.ceil((new Date(endDate) - new Date()) / 86400000);
+  if (days < 0) return 'expired';
+  if (days <= 30) return 'expiring_soon';
+  return 'active';
+}
+function daysLeft(d) { return Math.ceil((new Date(d) - new Date()) / 86400000); }
+function statusBadge(s) {
+  if (s === 'active') return '<span class="badge badge-active">Active</span>';
+  if (s === 'expired') return '<span class="badge badge-expired">Expired</span>';
+  if (s === 'expiring_soon') return '<span class="badge badge-expiring">Expiring Soon</span>';
+  return '<span class="badge" style="background:#f3f4f6;color:#6b7280">Unknown</span>';
+}
+function getLicAssignments(licId) { return assignments.filter(a => a.licenseId === licId); }
+function getLicMembers(licId) {
+  const asns = getLicAssignments(licId);
+  const uids = asns.map(a => a.userId);
+  return members.filter(m => uids.includes(m.id));
+}
+function getUserLicenses(userId) {
+  const licIds = assignments.filter(a => a.userId === userId).map(a => a.licenseId);
+  return licenses.filter(l => licIds.includes(l.id));
+}
+function avatarHtml(name, size=36, extraStyle='') {
+  const initials = name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+  const colors = ['#1565c0','#6a1b9a','#00695c','#e65100','#ad1457','#37474f','#558b2f'];
+  const bg = colors[name.charCodeAt(0) % colors.length];
+  return `<div class="avatar" style="width:${size}px;height:${size}px;font-size:${size*.36}px;background:${bg};${extraStyle}">${initials}</div>`;
+}
+function showLoading(msg) {
+  document.getElementById('loading-msg').textContent = msg || 'Loading…';
+  document.getElementById('loading-overlay').style.display = 'flex';
+}
+function hideLoading() { document.getElementById('loading-overlay').style.display = 'none'; }
+function showToast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = type === 'error' ? '#b71c1c' : type === 'info' ? '#1565c0' : '#1b5e20';
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3500);
+}
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+// ========== SIDEBAR ==========
+const ADMIN_NAV = [
+  {id:'dashboard',label:'Dashboard',path:'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6'},
+  {id:'licenses',label:'Licenses',path:'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'},
+  {id:'members',label:'Members',path:'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z'},
+  {id:'reports',label:'Reports',path:'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'},
+];
+const MEMBER_NAV = [
+  {id:'my-licenses',label:'My Licenses',path:'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'},
+  {id:'request',label:'Request License',path:'M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z'},
+];
+function setupSidebar() {
+  const nav = currentUser.role === 'admin' ? ADMIN_NAV : MEMBER_NAV;
+  document.getElementById('sb-avatar').innerHTML = avatarHtml(currentUser.name, 32).match(/>[^<]*</)[0].slice(1,-1);
+  document.getElementById('sb-avatar').style.background = ['#1565c0','#6a1b9a','#00695c','#e65100'][currentUser.name.charCodeAt(0)%4];
+  document.getElementById('sb-name').textContent = currentUser.name;
+  document.getElementById('sb-role').textContent = currentUser.role;
+  document.getElementById('tb-dept').textContent = currentUser.dept || '';
+  document.getElementById('tb-avatar').innerHTML = avatarHtml(currentUser.name, 34).match(/>[^<]*</)[0].slice(1,-1);
+  document.getElementById('tb-avatar').style.background = ['#1565c0','#6a1b9a','#00695c','#e65100'][currentUser.name.charCodeAt(0)%4];
+  const container = document.getElementById('nav-items');
+  container.innerHTML = nav.map(n => `
+    <button class="nav-item ${n.id===currentPage?'active':''}" onclick="renderPage('${n.id}')" id="nav-${n.id}">
+      <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" style="flex-shrink:0"><path stroke-linecap="round" stroke-linejoin="round" d="${n.path}"/></svg>
+      <span class="nav-label sb-text">${n.label}</span>
+    </button>`).join('');
+}
+function toggleSidebar() {
+  sidebarOpen = !sidebarOpen;
+  const sb = document.getElementById('sidebar');
+  sb.classList.toggle('collapsed', !sidebarOpen);
+  document.querySelectorAll('.sb-text').forEach(el => el.style.display = sidebarOpen ? '' : 'none');
+}
+function setActivePage(id) {
+  currentPage = id;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const el = document.getElementById('nav-' + id);
+  if (el) el.classList.add('active');
+  const labels = {dashboard:'Dashboard',licenses:'Licenses',members:'Members',reports:'Reports','my-licenses':'My Licenses',request:'Request License'};
+  document.getElementById('page-title').textContent = labels[id] || id;
+}
+
+// ========== RENDER ==========
+function renderPage(id) {
+  setActivePage(id);
+  const c = document.getElementById('content');
+  if (id === 'dashboard') renderDashboard(c);
+  else if (id === 'licenses') renderLicenses(c);
+  else if (id === 'members') renderMembers(c);
+  else if (id === 'reports') renderReports(c);
+  else if (id === 'my-licenses') renderMyLicenses(c);
+  else if (id === 'request') renderRequest(c);
+}
+
+// ---- DASHBOARD ----
+function renderDashboard(c) {
+  const total = licenses.length;
+  const active = licenses.filter(l=>l.status==='active').length;
+  const expiring = licenses.filter(l=>l.status==='expiring_soon').length;
+  const expired = licenses.filter(l=>l.status==='expired').length;
+  const totalSeats = licenses.reduce((a,l)=>a+l.totalQty,0);
+  const usedSeats = licenses.reduce((a,l)=>a+getLicAssignments(l.id).length,0);
+  const util = totalSeats > 0 ? Math.round(usedSeats/totalSeats*100) : 0;
+  const monthlyCost = licenses.filter(l=>l.status!=='expired').reduce((a,l)=>a+(l.cost*getLicAssignments(l.id).length),0);
+  const sorted = [...licenses].sort((a,b)=>new Date(a.endDate)-new Date(b.endDate)).slice(0,6);
+
+  c.innerHTML = `
+  <div class="grid-4 mb-24">
+    ${[
+      {label:'Total Licenses',val:total,icon:'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',color:'#1565c0',bg:'#e3f2fd'},
+      {label:'Active',val:active,icon:'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',color:'#2e7d32',bg:'#e8f5e9'},
+      {label:'Expiring Soon',val:expiring,icon:'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z',color:'#e65100',bg:'#fff8e1'},
+      {label:'Expired',val:expired,icon:'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z',color:'#c62828',bg:'#ffebee'},
+    ].map(s=>`<div class="stat-card"><div class="stat-icon" style="background:${s.bg}"><svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="${s.color}" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="${s.icon}"/></svg></div><div><div class="stat-label">${s.label}</div><div class="stat-value">${s.val}</div></div></div>`).join('')}
+  </div>
+  <div class="grid-2 mb-24">
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;color:#111827;margin-bottom:16px">Seat Utilization</h3>
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:#6b7280;margin-bottom:8px"><span>Used: ${usedSeats}</span><span>Total: ${totalSeats}</span></div>
+      <div class="progress-bar" style="height:10px"><div class="progress-fill" style="width:${util}%"></div></div>
+      <p style="font-size:12px;color:#6b7280;margin-top:8px">${util}% utilization across all licenses</p>
+    </div>
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;color:#111827;margin-bottom:4px">Monthly Cost</h3>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:12px">Active assigned seats only</p>
+      <p style="font-size:32px;font-weight:700;color:#1565c0;margin:0">$${monthlyCost.toFixed(2)}</p>
+      <p style="font-size:12px;color:#6b7280;margin-top:4px">per month</p>
+    </div>
+  </div>
+  <div class="card">
+    <h3 style="font-size:14px;font-weight:600;color:#111827;margin-bottom:16px">License Expiry Overview</h3>
+    <table class="data-table">
+      <thead><tr><th>Software</th><th>Vendor</th><th>End Date</th><th>Days Left</th><th>Assigned</th><th>Status</th></tr></thead>
+      <tbody>
+        ${sorted.map(l=>{
+          const asnCount = getLicAssignments(l.id).length;
+          const days = daysLeft(l.endDate);
+          const daysStr = days < 0 ? `<span style="color:#c62828;font-weight:600">${Math.abs(days)}d ago</span>` : days <= 30 ? `<span style="color:#e65100;font-weight:600">${days}d</span>` : `<span style="color:#6b7280">${days}d</span>`;
+          return `<tr style="cursor:pointer" onclick="renderPage('licenses')"><td style="font-weight:600;color:#111827">${l.software}<br><small style="color:#9ca3af;font-weight:400">${l.vendor}</small></td><td>${l.vendor}</td><td style="color:#6b7280">${l.endDate}</td><td>${daysStr}</td><td style="color:#6b7280">${asnCount}/${l.totalQty}</td><td>${statusBadge(l.status)}</td></tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+// ---- LICENSES ----
+let licFilterCat = 'All', licFilterStatus = 'All';
+function renderLicenses(c) {
+  const cats = ['All','Productivity','Design','Development','Communication','Project Mgmt','Security','Other'];
+  const statuses = [{v:'All',l:'All Status'},{v:'active',l:'Active'},{v:'expiring_soon',l:'Expiring Soon'},{v:'expired',l:'Expired'}];
+  const filtered = licenses.filter(l => (licFilterCat==='All'||l.category===licFilterCat) && (licFilterStatus==='All'||l.status===licFilterStatus));
+
+  c.innerHTML = `
+  <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+    <select class="form-input" style="width:auto" onchange="licFilterCat=this.value;renderPage('licenses')">${cats.map(cat=>`<option ${licFilterCat===cat?'selected':''}>${cat}</option>`).join('')}</select>
+    <select class="form-input" style="width:auto" onchange="licFilterStatus=this.value;renderPage('licenses')">${statuses.map(s=>`<option value="${s.v}" ${licFilterStatus===s.v?'selected':''}>${s.l}</option>`).join('')}</select>
+    <div style="flex:1"></div>
+    <button class="btn-primary" onclick="document.getElementById('add-modal').style.display='flex'">
+      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      Add License
+    </button>
+  </div>
+  <div style="display:flex;gap:20px">
+    <div style="flex:1;overflow:hidden">
+      <div class="card" style="padding:0;overflow:hidden">
+        <table class="data-table">
+          <thead><tr><th>Software</th><th>Category</th><th>Seats</th><th>Assigned</th><th>Start Date</th><th>End Date</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${filtered.map(l => {
+              const asnCount = getLicAssignments(l.id).length;
+              const pct = Math.min(100, Math.round(asnCount/l.totalQty*100));
+              const sel = selectedLicense && selectedLicense.id === l.id;
+              return `<tr class="${sel?'selected':''}" onclick="selectLicense('${l.id}')" style="cursor:pointer">
+                <td><div style="font-weight:600;color:#111827">${l.software}</div><div style="font-size:11px;color:#9ca3af">${l.vendor}</div></td>
+                <td style="color:#6b7280">${l.category}</td>
+                <td style="font-weight:500">${l.totalQty}</td>
+                <td><div style="display:flex;align-items:center;gap:6px"><div class="progress-bar" style="width:40px;height:6px"><div class="progress-fill" style="width:${pct}%"></div></div><span style="font-size:12px;color:#6b7280">${asnCount}/${l.totalQty}</span></div></td>
+                <td style="color:#6b7280;font-size:12px">${l.startDate}</td>
+                <td style="color:#6b7280;font-size:12px">${l.endDate}</td>
+                <td>${statusBadge(l.status)}</td>
+                <td onclick="event.stopPropagation()">
+                  <div style="display:flex;gap:4px">
+                    <button class="btn-assign" onclick="openAssignModal('${l.id}')">Assign</button>
+                    <button class="btn-danger" onclick="deleteLicense('${l.id}')">✕</button>
+                  </div>
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div id="detail-panel" style="display:${selectedLicense?'block':'none'}"></div>
+  </div>`;
+
+  if (selectedLicense) renderDetailPanel();
+}
+
+function selectLicense(id) {
+  const lic = licenses.find(l => l.id === id);
+  if (selectedLicense && selectedLicense.id === id) { selectedLicense = null; }
+  else { selectedLicense = lic; }
+  renderPage('licenses');
+}
+
+function renderDetailPanel() {
+  const l = selectedLicense;
+  const asns = getLicAssignments(l.id);
+  const mems = getLicMembers(l.id);
+  document.getElementById('detail-panel').innerHTML = `
+  <div class="card" style="position:sticky;top:0">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+      <div><div style="font-size:15px;font-weight:700;color:#111827">${l.software}</div><div style="font-size:12px;color:#9ca3af">${l.vendor}</div></div>
+      <button onclick="selectedLicense=null;renderPage('licenses')" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:20px;line-height:1">×</button>
+    </div>
+    ${[['Category',l.category],['Total Seats',l.totalQty],['Assigned',`${asns.length} / ${l.totalQty}`],['Cost/Seat',`$${l.cost}/mo`],['Monthly Total',`$${(l.cost*asns.length).toFixed(2)}`],['Start Date',l.startDate],['End Date',l.endDate],['Notes',l.notes||'—']].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${v}</span></div>`).join('')}
+    <div style="margin-top:14px">
+      <p style="font-size:12px;color:#6b7280;font-weight:600;margin-bottom:10px">Assigned Members (${mems.length})</p>
+      ${mems.length === 0 ? '<p style="font-size:12px;color:#9ca3af">No members assigned</p>' :
+        mems.map(m=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">${avatarHtml(m.name,28)}<div><div style="font-size:12px;font-weight:500;color:#111827">${m.name}</div><div style="font-size:11px;color:#9ca3af">${m.dept}</div></div></div>`).join('')}
+    </div>
+    <button class="btn-primary" onclick="openAssignModal('${l.id}')" style="width:100%;justify-content:center;margin-top:12px">Manage Assignments</button>
+  </div>`;
+}
+
+// ---- MEMBERS ----
+function renderMembers(c) {
+  c.innerHTML = `<div class="grid-3">
+    ${members.map(m => {
+      const userLics = getUserLicenses(m.id);
+      return `<div class="member-card">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+          ${avatarHtml(m.name, 44)}
+          <div><div style="font-size:14px;font-weight:600;color:#111827">${m.name}</div><div style="font-size:12px;color:#6b7280">${m.dept}</div><div style="font-size:11px;color:#9ca3af">${m.email}</div></div>
+        </div>
+        <div style="border-top:1px solid #f3f4f6;padding-top:12px">
+          <p style="font-size:12px;color:#6b7280;font-weight:600;margin-bottom:8px">Licenses (${userLics.length})</p>
+          ${userLics.length === 0 ? '<p style="font-size:12px;color:#9ca3af">None assigned</p>' :
+            userLics.map(l=>`<div class="license-mini"><span style="color:#374151">${l.software}</span>${statusBadge(l.status)}</div>`).join('')}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+// ---- REPORTS ----
+function renderReports(c) {
+  const catCounts = licenses.reduce((a,l)=>{a[l.category]=(a[l.category]||0)+1;return a},{});
+  const monthlyCost = licenses.filter(l=>l.status!=='expired').reduce((a,l)=>a+(l.cost*getLicAssignments(l.id).length),0);
+  c.innerHTML = `<div class="grid-2 mb-16">
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;color:#111827;margin-bottom:16px">Licenses by Category</h3>
+      ${Object.entries(catCounts).map(([cat,count])=>`
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px"><span style="color:#374151">${cat}</span><span style="color:#6b7280">${count}</span></div>
+          <div class="progress-bar" style="height:8px"><div class="progress-fill" style="width:${Math.round(count/licenses.length*100)}%"></div></div>
+        </div>`).join('')}
+    </div>
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;color:#111827;margin-bottom:16px">Monthly Cost Breakdown</h3>
+      ${licenses.filter(l=>l.status!=='expired').map(l=>`
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f9fafb;font-size:13px">
+          <span style="color:#374151">${l.software}</span>
+          <span style="color:#111827;font-weight:500">$${(l.cost*getLicAssignments(l.id).length).toFixed(2)}/mo</span>
+        </div>`).join('')}
+      <div style="display:flex;justify-content:space-between;padding:10px 0 0;font-size:14px;font-weight:700"><span>Total</span><span style="color:#1565c0">$${monthlyCost.toFixed(2)}/mo</span></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3 style="font-size:14px;font-weight:600;color:#111827;margin-bottom:16px">SOP Compliance Report</h3>
+    <table class="data-table">
+      <thead><tr><th>Software</th><th>Vendor</th><th>Total Seats</th><th>Used</th><th>Utilization</th><th>Monthly Cost</th><th>SOP Status</th></tr></thead>
+      <tbody>
+        ${licenses.map(l=>{
+          const used = getLicAssignments(l.id).length;
+          const util = l.totalQty > 0 ? Math.round(used/l.totalQty*100) : 0;
+          const compliant = util >= 20 && l.status !== 'expired';
+          return `<tr>
+            <td style="font-weight:600;color:#111827">${l.software}</td>
+            <td style="color:#6b7280">${l.vendor}</td>
+            <td>${l.totalQty}</td><td>${used}</td>
+            <td><span style="font-weight:600;color:${util<20?'#c62828':'#2e7d32'}">${util}%</span></td>
+            <td style="color:#6b7280">$${(l.cost*used).toFixed(2)}</td>
+            <td><span class="badge ${compliant?'badge-active':'badge-expired'}">${compliant?'Compliant':'Review Required'}</span></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+// ---- MY LICENSES ----
+function renderMyLicenses(c) {
+  const myLics = getUserLicenses(currentUser.id);
+  c.innerHTML = `
+  <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px 20px;display:flex;align-items:center;gap:14px;margin-bottom:20px">
+    ${avatarHtml(currentUser.name, 44)}
+    <div style="flex:1"><div style="font-size:14px;font-weight:600;color:#1e40af">${currentUser.name}</div><div style="font-size:12px;color:#3b82f6">${currentUser.dept} · ${currentUser.email}</div></div>
+    <div style="text-align:right"><div style="font-size:26px;font-weight:700;color:#1565c0">${myLics.length}</div><div style="font-size:12px;color:#6b7280">licenses assigned</div></div>
+  </div>
+  ${myLics.length === 0
+    ? '<div class="card" style="text-align:center;padding:40px"><p style="color:#9ca3af">No licenses assigned to you yet. Submit a request below.</p><button class="btn-primary" style="margin-top:12px;justify-content:center" onclick="renderPage(\'request\')">Request a License</button></div>'
+    : `<div class="grid-2">${myLics.map(l=>{
+        const days = daysLeft(l.endDate);
+        return `<div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+            <div><div style="font-size:15px;font-weight:700;color:#111827">${l.software}</div><div style="font-size:12px;color:#9ca3af">${l.vendor} · ${l.category}</div></div>
+            ${statusBadge(l.status)}
+          </div>
+          ${[['Start Date',l.startDate],['End Date',l.endDate],['Days Remaining',days<0?'Expired':days<=30?`<span style="color:#e65100;font-weight:600">${days} days</span>`:`${days} days`],['Notes',l.notes||'—']].map(([k,v])=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid #f9fafb"><span style="color:#6b7280">${k}</span><span style="color:#111827;font-weight:500">${v}</span></div>`).join('')}
+        </div>`;}).join('')}</div>`}`;
+}
+
+// ---- REQUEST ----
+function renderRequest(c) {
+  c.innerHTML = `<div style="max-width:540px">
+    <div class="card">
+      <h2 style="font-size:16px;font-weight:700;color:#111827;margin-bottom:6px">Request a Software License</h2>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:24px">Submit a request to your IT admin. All requests are reviewed per SOP policy within 2 business days.</p>
+      <div class="form-group"><label class="form-label">Software Name *</label><input class="form-input" id="req-software" placeholder="e.g. Adobe Acrobat"/></div>
+      <div class="form-group"><label class="form-label">Business Justification *</label><textarea class="form-input" id="req-reason" rows="3" placeholder="Why do you need this software?"></textarea></div>
+      <div class="form-group"><label class="form-label">Required By</label><input type="date" class="form-input" id="req-date"/></div>
+      <button class="btn-primary" onclick="submitRequest()" style="width:100%;justify-content:center;margin-top:8px">Submit Request</button>
+    </div>
+  </div>`;
+}
+
+// ========== ACTIONS ==========
+async function submitAddLicense() {
+  const software = document.getElementById('f-software').value.trim();
+  const vendor = document.getElementById('f-vendor').value.trim();
+  const startDate = document.getElementById('f-start').value;
+  const endDate = document.getElementById('f-end').value;
+  if (!software || !vendor || !startDate || !endDate) { showToast('Please fill in required fields.', 'error'); return; }
+  const data = {
+    software, vendor,
+    category: document.getElementById('f-category').value,
+    totalQty: parseInt(document.getElementById('f-qty').value) || 1,
+    startDate, endDate,
+    cost: parseFloat(document.getElementById('f-cost').value) || 0,
+    notes: document.getElementById('f-notes').value.trim(),
+    status: computeStatus(endDate)
+  };
+  closeModal('add-modal');
+  showLoading('Saving to SharePoint…');
+  if (!isDemoMode) {
+    const newId = await spAddLicense(data);
+    data.id = newId;
+  } else {
+    data.id = 'l' + Date.now();
+  }
+  licenses.push(data);
+  hideLoading();
+  showToast('License added successfully.');
+  renderPage('licenses');
+}
+
+async function deleteLicense(id) {
+  if (!confirm('Delete this license and all assignments?')) return;
+  showLoading('Deleting…');
+  if (!isDemoMode) await spDeleteLicense(id);
+  licenses = licenses.filter(l => l.id !== id);
+  assignments = assignments.filter(a => a.licenseId !== id);
+  if (selectedLicense && selectedLicense.id === id) selectedLicense = null;
+  hideLoading();
+  showToast('License deleted.', 'info');
+  renderPage('licenses');
+}
+
+function openAssignModal(licId) {
+  const lic = licenses.find(l => l.id === licId);
+  if (!lic) return;
+  assignModalLicId = licId;
+  assignModalTemp = getLicAssignments(licId).map(a => a.userId);
+  document.getElementById('assign-title').textContent = 'Assign Members – ' + lic.software;
+  document.getElementById('assign-sub').textContent = `${assignModalTemp.length}/${lic.totalQty} seats used`;
+  const list = document.getElementById('assign-list');
+  list.innerHTML = members.map(m => {
+    const assigned = assignModalTemp.includes(m.id);
+    const full = !assigned && assignModalTemp.length >= lic.totalQty;
+    return `<div class="assign-item ${assigned?'assigned':''}" id="asgn-${m.id}" onclick="toggleAssignTemp('${m.id}','${licId}')" style="${full?'opacity:.5;pointer-events:none':''}">
+      ${avatarHtml(m.name,36)}
+      <div style="flex:1"><div style="font-size:13px;font-weight:500;color:#111827">${m.name}</div><div style="font-size:11px;color:#9ca3af">${m.dept}</div></div>
+      <div class="checkbox ${assigned?'checked':''}" id="chk-${m.id}">
+        ${assigned?`<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>`:''}
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('assign-modal').style.display = 'flex';
+}
+
+function toggleAssignTemp(userId, licId) {
+  const lic = licenses.find(l => l.id === licId);
+  const idx = assignModalTemp.indexOf(userId);
+  if (idx >= 0) {
+    assignModalTemp.splice(idx, 1);
+  } else {
+    if (assignModalTemp.length >= lic.totalQty) return;
+    assignModalTemp.push(userId);
+  }
+  document.getElementById('assign-sub').textContent = `${assignModalTemp.length}/${lic.totalQty} seats used`;
+  const el = document.getElementById('asgn-' + userId);
+  const chk = document.getElementById('chk-' + userId);
+  const assigned = assignModalTemp.includes(userId);
+  el.className = 'assign-item ' + (assigned ? 'assigned' : '');
+  chk.className = 'checkbox ' + (assigned ? 'checked' : '');
+  chk.innerHTML = assigned ? `<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>` : '';
+  // Update disabled state for full
+  members.forEach(m => {
+    const el2 = document.getElementById('asgn-' + m.id);
+    if (!el2) return;
+    const isMineAssigned = assignModalTemp.includes(m.id);
+    const full2 = !isMineAssigned && assignModalTemp.length >= lic.totalQty;
+    el2.style.opacity = full2 ? '.5' : '1';
+    el2.style.pointerEvents = full2 ? 'none' : '';
+  });
+}
+
+async function saveAssignments() {
+  closeModal('assign-modal');
+  showLoading('Saving assignments…');
+  if (!isDemoMode) {
+    await spSaveAssignments(assignModalLicId, assignModalTemp, members);
+    // Refresh assignments
+    const token = await getToken();
+    const siteId = await getSiteId(token);
+    const asnRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${window._assignListId}/items?$expand=fields&$top=500`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const asnData = await asnRes.json();
+    assignments = (asnData.value || []).map(i => ({ id: i.id, licenseId: i.fields.LicenseId, userId: i.fields.UserId, userName: i.fields.UserName, userEmail: i.fields.UserEmail, userDept: i.fields.UserDept }));
+  } else {
+    assignments = assignments.filter(a => a.licenseId !== assignModalLicId);
+    assignModalTemp.forEach(uid => {
+      const m = members.find(x => x.id === uid);
+      assignments.push({ id: 'a' + Date.now() + uid, licenseId: assignModalLicId, userId: uid, userName: m?.name, userEmail: m?.email, userDept: m?.dept });
+    });
+  }
+  hideLoading();
+  showToast('Assignments saved.');
+  if (selectedLicense && selectedLicense.id === assignModalLicId) renderDetailPanel();
+  renderPage('licenses');
+}
+
+function submitRequest() {
+  const sw = document.getElementById('req-software')?.value?.trim();
+  const reason = document.getElementById('req-reason')?.value?.trim();
+  if (!sw || !reason) { showToast('Please fill in required fields.', 'error'); return; }
+  showToast('Request submitted! IT admin will review within 2 business days.');
+  renderPage('my-licenses');
+}
+</script>
+</body>
+</html>
